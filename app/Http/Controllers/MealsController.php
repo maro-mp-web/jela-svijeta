@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\LangRequest;
 use Illuminate\Http\Request;
 use App\Models\Meal;
 use App\Services\MealService;
@@ -16,7 +17,7 @@ class MealsController extends Controller
         $this->mealService = $mealService;
     }
 
-    public function index(Request $request)
+    public function index(LangRequest $request)
     {
         $query = Meal::query();
 
@@ -91,6 +92,53 @@ class MealsController extends Controller
             ],
         ];
 
+        $lang = $request->validated()['lang'] ?? config('app.locale');
+        app()->setLocale($lang);
+
+        // Dohvaćanje rezultata
+        $meals = $query->paginate($perPage);
+
+        $response = [
+            'meta' => [
+                'currentPage' => $meals->currentPage(),
+                'totalItems' => $meals->total(),
+                'itemsPerPage' => $meals->perPage(),
+                'totalPages' => $meals->lastPage(),
+            ],
+            'data' => $meals->map(function ($meal) use ($request) {
+                return [
+                    'id' => $meal->id,
+                    'title' => $meal->getTranslation('title', $request->input('lang', config('app.locale'))),
+                    'description' => $meal->getTranslation('description', $request->input('lang', config('app.locale'))),
+                    'status' => $this->getStatus($meal, $request->input('diff_time')),
+                    'category' => $meal->category ? [
+                        'id' => $meal->category->id,
+                        'title' => $meal->category->getTranslation('title', $request->input('lang', config('app.locale'))),
+                        'slug' => $meal->category->slug,
+                    ] : null,
+                    'tags' => $meal->tags->map(function ($tag) use ($request) {
+                        return [
+                            'id' => $tag->id,
+                            'title' => $tag->getTranslation('title', $request->input('lang', config('app.locale'))),
+                            'slug' => $tag->slug,
+                        ];
+                    }),
+                    'ingredients' => $meal->ingredients->map(function ($ingredient) use ($request) {
+                        return [
+                            'id' => $ingredient->id,
+                            'title' => $ingredient->getTranslation('title', $request->input('lang', config('app.locale'))),
+                            'slug' => $ingredient->slug,
+                        ];
+                    }),
+                ];
+            }),
+            'links' => [
+                'prev' => $meals->previousPageUrl(),
+                'next' => $meals->nextPageUrl(),
+                'self' => $meals->url($meals->currentPage()),
+            ],
+        ];
+
         return response()->json($response);
     }
 
@@ -109,4 +157,5 @@ class MealsController extends Controller
 
         return 'created';
     }
+
 }
